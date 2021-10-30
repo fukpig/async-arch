@@ -1,7 +1,7 @@
 # popugs
 
 <a href="https://miro.com/app/board/o9J_lnNqdUw=/"><strong>Miro DDD</strong></a>
-<a href="https://miro.com/app/board/o9J_lnNqdUw=/"><strong>https://miro.com/app/board/o9J_lnNSDx8=</strong></a>
+<a href="https://miro.com/app/board/o9J_lnNSDx8="><strong>Query</strong></a>
 
 ## Общие данные
 - Данные юзеров в 3 сервисах - Таск трекер, Аккаутинг, Авторизация
