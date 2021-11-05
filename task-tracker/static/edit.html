@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Login</title>
+    <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css">
+    <script src="//code.jquery.com/jquery-2.2.4.min.js"></script>
+    <script src="//maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Update</h1>
+        <form action="/edit" method="POST">
+            <input type="hidden" value="{{.Task.ID}}" name="id">
+            <div class="form-group">
+                <label for="status">Status</label>
+                <select name="status"class="form-select" aria-label="Default select example">
+                  <option value="new"
+                          {{if eq .Task.Status "new"}}
+                              selected
+                          {{end}}
+                  >New</option>
+                  <option value="done"
+                          {{if eq .Task.Status "done"}}
+                              selected
+                          {{end}}
+                  >Done</option>
+                </select>
+            </div>
+            <button type="submit" class="btn btn-success">Edit</button>
+        </form>
+    </div>
+</body>
+
+</html>
