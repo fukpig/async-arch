@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Login</title>
+    <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css">
+    <script src="//code.jquery.com/jquery-2.2.4.min.js"></script>
+    <script src="//maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <h1>List</h1>
+        Hello {{ .CurrentUser.Username}}<br/>
+        Current Role:{{ .CurrentUser.Role}}<br/>
+
+        {{if eq .CurrentUser.Role "admin"}}
+            <a href="/add"><button type="button" class="btn btn-primary">Add task</button></a>
+            <a href="/assign"><button type="button" class="btn btn-primary">Assign</button></a>
+        {{end}}
+        <table class="table">
+          <thead>
+          <tr>
+            <th scope="col">#</th>
+            <th scope="col">Description</th>
+            <th scope="col">Username</th>
+            <th scope="col">Status</th>
+            <th scope="col">Action</th>
+          </tr>
+          </thead>
+        {{$role := .CurrentUser.Role}}
+        {{range .Tasks}}
+             <tr>
+               <th scope="row">{{ .ID }}</th>
+               <td>{{ .Description }}</td>
+               <td>{{ .AssignName }}</td>
+               <td>{{ .Status }}</td>
+               <td>
+                  <a href="/edit?id={{ .ID }}"><button type="button" class="btn btn-primary">Edit</button></a>
+               </td>
+              </tr>
+        {{end}}
+        </table>
+
+    </div>
+</body>
+
+</html>
