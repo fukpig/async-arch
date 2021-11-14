@@ -36,6 +36,7 @@ var (
 	secretvar string
 	domainvar string
 	portvar   int
+	hashKey   = []byte("FF51A553-72FC-478B-9AEF-93D6F506DE91")
 )
 
 type User struct {
@@ -69,10 +70,20 @@ func main() {
 	manager.MapAccessGenerate(generates.NewAccessGenerate())
 
 	clientStore := store.NewClientStore()
-	clientStore.Set(idvar, &models.Client{
-		ID:     idvar,
-		Secret: secretvar,
-		Domain: domainvar,
+	clientStore.Set("task-tracker", &models.Client{
+		ID:     "task-tracker",
+		Secret: "22222222",
+		Domain: "http://localhost:9094",
+	})
+	clientStore.Set("accounting", &models.Client{
+		ID:     "accounting",
+		Secret: "22222222",
+		Domain: "http://localhost:9098",
+	})
+	clientStore.Set("analytics", &models.Client{
+		ID:     "analytics",
+		Secret: "22222222",
+		Domain: "http://localhost:9099",
 	})
 	manager.MapClientStorage(clientStore)
 
@@ -249,26 +260,30 @@ func main() {
 			hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 
 			var id int64
-			err := conn.QueryRow(context.Background(), "insert into users(username, password, role) values($1,$2,$3) RETURNING id;", username, hashedPassword, role).Scan(&id)
+			publicId := uuid.NewV4().String()
+			err := conn.QueryRow(context.Background(), "insert into users(username, password, role, public_id) values($1,$2,$3,$4) RETURNING id;", username, hashedPassword, role, publicId).Scan(&id)
 			if err != nil {
 				log.Println("sql error", err)
 			}
 
-			topic := "users-stream"
+			topic := "dc1.identity.cdc.users"
 
-			eventData := make(map[string]interface{})
-			eventData["id"] = id
-			eventData["username"] = username
-			eventData["role"] = role
+			message := pc.User{
+				PublicID: publicId,
+				Username: username,
+				Role:     role,
+				Header: &pc.Header{
+					ApplicationId:   "auth-service",
+					Timestamp:       time.Now().Unix(),
+					MessageId:       uuid.NewV4().String(),
+					EventDescriptor: "user.created",
+				},
+			}
+			value, err := serializer.Serialize(&message)
 
-			event := make(map[string]interface{})
-			event["event_name"] = "UserCreated"
-			event["data"] = eventData
-
-			eventJson, _ := json.Marshal(event)
 			p.Produce(&kafka.Message{
 				TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
-				Value:          []byte(eventJson),
+				Value:          value,
 			}, nil)
 
 			w.Header().Set("Location", "/list")
@@ -331,21 +346,24 @@ func main() {
 			if err != nil {
 				log.Println("sql error", err)
 			}
-			topic := "users-stream"
+			topic := "dc1.identity.cdc.users"
 
-			eventData := make(map[string]interface{})
-			eventData["id"] = idForm
-			eventData["username"] = username
-			eventData["role"] = role
-
-			event := make(map[string]interface{})
-			event["event_name"] = "UserUpdated"
-			event["data"] = eventData
-
-			eventJson, _ := json.Marshal(event)
+			var publicId string
+			err = conn.QueryRow(context.Background(), "select public_id from users where id=$1", id).Scan(&publicId)
+			message := pc.User{
+				PublicID: publicId,
+				Username: username,
+				Role:     role,
+				Header: &pc.Header{
+					ApplicationId:   "auth-service",
+					Timestamp:       time.Now().Unix(),
+					MessageId:       uuid.NewV4().String(),
+					EventDescriptor: "user.updated",
+				},
+			}
 			p.Produce(&kafka.Message{
 				TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
-				Value:          []byte(eventJson),
+				Value:          message,
 			}, nil)
 			w.Header().Set("Location", "/list")
 			w.WriteHeader(http.StatusFound)
@@ -357,7 +375,6 @@ func main() {
 		keys, _ := r.URL.Query()["id"]
 
 		id := keys[0]
-		fmt.Println("idd", id)
 		err = conn.QueryRow(context.Background(), "select id,username,role from users where id=$1", id).Scan(&user.ID, &user.Username, &user.Role)
 		data.User = user
 		tmpl, err := template.ParseFiles("static/edit.html")

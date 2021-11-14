@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -16,17 +17,88 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/jackc/pgx/v4"
+	pc "schemas"
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/go-session/session"
+	"github.com/jackc/pgx/v4"
+	"github.com/riferrei/srclient"
+	uuid "github.com/satori/go.uuid"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
 	authServerURL = "http://localhost:9096"
 )
+
+type SchemaRegistryClient interface {
+	GetSchema(schemaID int) (*srclient.Schema, error)
+	GetLatestSchema(subject string) (*srclient.Schema, error)
+	CreateSchema(subject string, schema string, schemaType srclient.SchemaType, references ...srclient.Reference) (*srclient.Schema, error)
+	IsSchemaCompatible(subject, schema, version string, schemaType srclient.SchemaType) (bool, error)
+}
+
+type ProtobufSerializer struct {
+	client        SchemaRegistryClient
+	topic         string
+	valueSchema   *srclient.Schema
+	schemaIDBytes []byte
+	msgIndexBytes []byte
+}
+
+func NewProtobufSerializer(schemaRegistryClient SchemaRegistryClient, topic string) *ProtobufSerializer {
+
+	valueSchema, err := schemaRegistryClient.GetLatestSchema(topic)
+	if err != nil {
+		panic(fmt.Sprintf("Error fetching the value schema %s", err))
+	}
+	schemaIDBytes := make([]byte, 4)
+	binary.BigEndian.PutUint32(schemaIDBytes, uint32(valueSchema.ID()))
+
+	// 10 bytes is sufficient for 64 bits in zigzag encoding, but array indexes cannot possibly be
+	// 64 bits in a reasonable protobuf, so let's just make a buffer sufficient for a reasonable
+	// array of 4 or 5 elements, each with relatively small index
+	varBytes := make([]byte, 16)
+	// array length 1
+	length := binary.PutVarint(varBytes, 1)
+	// index 0 element.  We could write array length 0 with no subsequent value, which is equivalent to writing 1, 0
+	length += binary.PutVarint(varBytes[length:], 0)
+
+	return &ProtobufSerializer{
+		client:        schemaRegistryClient,
+		topic:         topic,
+		valueSchema:   valueSchema,
+		schemaIDBytes: schemaIDBytes,
+		msgIndexBytes: varBytes[:length],
+	}
+}
+
+func (ps *ProtobufSerializer) Serialize(pb proto.Message) ([]byte, error) {
+	bytes, err := proto.Marshal(pb)
+	if err != nil {
+		fmt.Printf("failed serialize: %v", err)
+		return nil, err
+	}
+
+	var msgBytes []byte
+	// schema serialization protocol version number
+	msgBytes = append(msgBytes, byte(0))
+	// schema id
+	msgBytes = append(msgBytes, ps.schemaIDBytes...)
+	// zig zag encoded array of message indexes preceded by length of array
+	msgBytes = append(msgBytes, ps.msgIndexBytes...)
+
+	fmt.Printf("msgBytes is of length %d before proto\n", len(msgBytes))
+	msgBytes = append(msgBytes, bytes...)
+
+	return msgBytes, nil
+}
+
+func (ps *ProtobufSerializer) GetTopic() *string {
+	return &ps.topic
+}
 
 func getCurrentUser(w http.ResponseWriter, r *http.Request, conn *pgx.Conn) (User, error) {
 	var user User
@@ -61,6 +133,8 @@ var (
 		},
 	}
 	globalToken *oauth2.Token // Non-concurrent security
+
+	hashKey = []byte("FF51A553-72FC-478B-9AEF-93D6F506DE91")
 )
 
 type ResponseOauth struct {
@@ -112,7 +186,21 @@ func main() {
 		panic(err)
 	}
 
-	c.SubscribeTopics([]string{"users-stream"}, nil)
+	//topic := "dc1.identity.cdc.users"
+	topic := "dc1.task.cdc.tasks"
+	schemaRegistryClient := srclient.CreateSchemaRegistryClient("http://localhost:8081")
+	schema, err := schemaRegistryClient.GetLatestSchema(topic)
+	if schema == nil {
+		schemaBytes, _ := ioutil.ReadFile("schemas/task.v2.proto")
+		schema, err = schemaRegistryClient.CreateSchema(topic, string(schemaBytes), srclient.Protobuf)
+		if err != nil {
+			panic(fmt.Sprintf("Error creating the schema %s", err))
+		}
+	}
+	schemaIDBytes := make([]byte, 4)
+	binary.BigEndian.PutUint32(schemaIDBytes, uint32(schema.ID()))
+
+	c.SubscribeTopics([]string{"dc1.identity.cdc.users"}, nil)
 	go func() {
 		for {
 			msg, err := c.ReadMessage(-1)
@@ -125,15 +213,15 @@ func main() {
 				}
 
 				switch eventName := event.EventName; eventName {
-				case "UserCreated":
+				case "user.created":
 					log.Println("create user")
-					err := conn.QueryRow(context.Background(), "insert into tasks_users(id, username, role) values($1,$2,$3)", event.Data.ID, event.Data.Username, event.Data.Role)
+					err := conn.QueryRow(context.Background(), "insert into tasks_users(public_id, username, role) values($1,$2,$3)", event.Data.PublicId, event.Data.Username, event.Data.Role)
 					if err != nil {
 						log.Println("sql err", err)
 					}
-				case "UserUpdated":
+				case "user.updated":
 					log.Println("update user")
-					_, err := conn.Exec(context.Background(), "update tasks_users set username=$1, role=$2 where id=$3", event.Data.Username, event.Data.Role, event.Data.ID)
+					_, err := conn.Exec(context.Background(), "update tasks_users set username=$1, role=$2 where public_id=$3", event.Data.Username, event.Data.Role, event.Data.PublicId)
 					if err != nil {
 						log.Println("sql err", err)
 					}
@@ -325,30 +413,39 @@ func main() {
 		if r.Method == "POST" {
 			r.ParseForm()
 			description := r.FormValue("description")
+			title := r.FormValue("title")
+			jiraID := r.FormValue("jira_id")
 
 			createdAt := time.Now()
 			var id int64
-			err := conn.QueryRow(context.Background(), "insert into tasks(description, status, created_at) values($1,$2,$3) RETURNING id;", description, "new", createdAt).Scan(&id)
+			err := conn.QueryRow(context.Background(), "insert into tasks(title, jira_id, description, status, created_at) values($1,$2,$3,$4,$5) RETURNING id;", title, jiraID, description, "new", createdAt).Scan(&id)
 			if err != nil {
 				log.Println("sql error", err)
 			}
 
-			topic := "tasks-stream"
+			topic := "dc1.task.cdc.tasks"
 
-			eventData := make(map[string]interface{})
-			eventData["id"] = id
-			eventData["status"] = "new"
-			eventData["description"] = description
-			eventData["created_at"] = createdAt
-
-			event := make(map[string]interface{})
-			event["event_name"] = "TaskCreated"
-			event["data"] = eventData
-
-			eventJson, _ := json.Marshal(event)
+			serializer := NewProtobufSerializer(schemaRegistryClient, topic)
+			eventUuid := uuid.NewV4().String()
+			message := pc.Task{
+				Id:          id,
+				Status:      "new",
+				Title:       title,
+				Jiraid:      jiraID,
+				Description: description,
+				CreatedAt:   time.Now().Unix(),
+				Header: &pc.Header{
+					ApplicationId:   "task-tracker",
+					Timestamp:       time.Now().Unix(),
+					MessageId:       eventUuid,
+					EventDescriptor: "task.created",
+				},
+			}
+			value, err := serializer.Serialize(&message)
+			//eventJson, _ := json.Marshal(event)
 			p.Produce(&kafka.Message{
 				TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
-				Value:          []byte(eventJson),
+				Value:          value,
 			}, nil)
 
 			w.Header().Set("Location", "/dashboard")
@@ -396,7 +493,7 @@ func main() {
 			tasks = append(tasks, task)
 		}
 
-		rows, err = conn.Query(context.Background(), "select id from tasks_users where role = 'engineer'")
+		rows, err = conn.Query(context.Background(), "select public_id from tasks_users where role = 'engineer'")
 		if err != nil {
 			log.Println("sql err", err)
 		}
@@ -415,27 +512,35 @@ func main() {
 		for _, task := range tasks {
 			randomIndex := rand.Intn(len(users))
 			pick := users[randomIndex]
-			_, err := conn.Exec(context.Background(), "update tasks set user_id=$1 where id=$2", pick.ID, task.ID)
+			_, err := conn.Exec(context.Background(), "update tasks set user_id=$1, status=$2 where id=$2", pick.ID, "птичка в клетке", task.ID)
 			if err != nil {
 				log.Println("sql err", err)
 			}
 
-			topic := "tasks-stream"
+			var publicId string
+			err = conn.QueryRow(context.Background(), "select public_id from tasks where id=$1", task.ID).Scan(&publicId)
 
-			eventData := make(map[string]interface{})
-			eventData["id"] = task.ID
-			eventData["user_id"] = pick.ID
-			eventData["created_at"] = time.Now()
+			topic := "dc1.task.cdc.tasks.assigned"
 
-			event := make(map[string]interface{})
-			event["event_name"] = "TaskAssigned"
-			event["data"] = eventData
-
-			eventJson, _ := json.Marshal(event)
+			serializer := NewProtobufSerializer(schemaRegistryClient, topic)
+			eventUuid := uuid.NewV4().String()
+			message := pc.Task{
+				PublicId:  publicId,
+				UserId:    pick.PublicID,
+				CreatedAt: time.Now().Unix(),
+				Header: &pc.Header{
+					ApplicationId:   "task-tracker",
+					Timestamp:       time.Now().Unix(),
+					MessageId:       eventUuid,
+					EventDescriptor: "task.assigned",
+				},
+			}
+			value, err := serializer.Serialize(&message)
 			p.Produce(&kafka.Message{
 				TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
-				Value:          []byte(eventJson),
+				Value:          value,
 			}, nil)
+
 		}
 
 		w.Header().Set("Location", "/dashboard")
@@ -465,22 +570,29 @@ func main() {
 			if err != nil {
 				log.Println("sql error", err)
 			}
-			topic := "tasks-stream"
 
-			eventData := make(map[string]interface{})
-			eventData["id"] = idForm
-			eventData["status"] = status
-			eventData["created_at"] = time.Now()
+			if status == "просо в миске" {
+				topic := "dc1.task.cdc.tasks.finished"
 
-			event := make(map[string]interface{})
-			event["event_name"] = "TaskUpdated"
-			event["data"] = eventData
-
-			eventJson, _ := json.Marshal(event)
-			p.Produce(&kafka.Message{
-				TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
-				Value:          []byte(eventJson),
-			}, nil)
+				serializer := NewProtobufSerializer(schemaRegistryClient, topic)
+				eventUuid := uuid.NewV4().String()
+				message := pc.Task{
+					PublicId:  publicId,
+					CreatedAt: time.Now().Unix(),
+					Header: &pc.Header{
+						ApplicationId:   "task-tracker",
+						Timestamp:       time.Now().Unix(),
+						MessageId:       eventUuid,
+						EventDescriptor: "task.finished",
+					},
+				}
+				value, err := serializer.Serialize(&message)
+				//eventJson, _ := json.Marshal(event)
+				p.Produce(&kafka.Message{
+					TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
+					Value:          value,
+				}, nil)
+			}
 			w.Header().Set("Location", "/dashboard")
 			w.WriteHeader(http.StatusFound)
 			return

@@ -1,4 +1,4 @@
-module async-arch/auth/client
+module async-arch/accounting
 
 go 1.17
 
@@ -8,17 +8,13 @@ require (
 	github.com/jackc/pgx/v4 v4.13.0
 	github.com/riferrei/srclient v0.4.0
 	github.com/satori/go.uuid v1.2.0
-	golang.org/x/oauth2 v0.0.0-20211028175245-ba495a64dcb5
+	golang.org/x/oauth2 v0.0.0-20211104180415-d3ed0bb246c8
 	google.golang.org/protobuf v1.25.0
 )
 
 require (
-	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/go-session/cookie v3.0.1+incompatible // indirect
 	github.com/golang/protobuf v1.4.2 // indirect
 	github.com/golang/snappy v0.0.1 // indirect
-	github.com/google/uuid v1.3.0 // indirect
-	github.com/gorilla/securecookie v1.1.1 // indirect
 	github.com/jackc/chunkreader/v2 v2.0.1 // indirect
 	github.com/jackc/pgconn v1.10.0 // indirect
 	github.com/jackc/pgio v1.0.0 // indirect
