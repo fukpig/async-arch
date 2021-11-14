@@ -6,6 +6,7 @@ require (
 	github.com/confluentinc/confluent-kafka-go v1.7.0
 	github.com/davecgh/go-spew v1.1.1
 	github.com/go-oauth2/oauth2/v4 v4.4.2
+	github.com/go-session/cookie v3.0.1+incompatible
 	github.com/go-session/session v3.1.2+incompatible
 	github.com/jackc/pgx/v4 v4.13.0
 	golang.org/x/crypto v0.0.0-20210711020723-a769d52b0f97
@@ -14,6 +15,7 @@ require (
 require (
 	github.com/golang-jwt/jwt v3.2.1+incompatible // indirect
 	github.com/google/uuid v1.1.1 // indirect
+	github.com/gorilla/securecookie v1.1.1 // indirect
 	github.com/jackc/chunkreader/v2 v2.0.1 // indirect
 	github.com/jackc/pgconn v1.10.0 // indirect
 	github.com/jackc/pgio v1.0.0 // indirect
