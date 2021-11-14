@@ -4,12 +4,21 @@ github.com/confluentinc/confluent-kafka-go/kafka
 github.com/confluentinc/confluent-kafka-go/kafka/librdkafka_vendor
 # github.com/davecgh/go-spew v1.1.1
 ## explicit
+# github.com/go-session/cookie v3.0.1+incompatible
+## explicit
 # github.com/go-session/session v3.1.2+incompatible
 ## explicit
 github.com/go-session/session
 # github.com/golang/protobuf v1.4.2
 ## explicit; go 1.9
 github.com/golang/protobuf/proto
+# github.com/golang/snappy v0.0.1
+## explicit
+github.com/golang/snappy
+# github.com/google/uuid v1.3.0
+## explicit
+# github.com/gorilla/securecookie v1.1.1
+## explicit
 # github.com/jackc/chunkreader/v2 v2.0.1
 ## explicit; go 1.12
 github.com/jackc/chunkreader/v2
@@ -37,6 +46,15 @@ github.com/jackc/pgtype
 ## explicit; go 1.13
 github.com/jackc/pgx/v4
 github.com/jackc/pgx/v4/internal/sanitize
+# github.com/linkedin/goavro/v2 v2.9.7
+## explicit; go 1.12
+github.com/linkedin/goavro/v2
+# github.com/riferrei/srclient v0.4.0
+## explicit; go 1.12
+github.com/riferrei/srclient
+# github.com/satori/go.uuid v1.2.0
+## explicit
+github.com/satori/go.uuid
 # golang.org/x/crypto v0.0.0-20210711020723-a769d52b0f97
 ## explicit; go 1.17
 golang.org/x/crypto/pbkdf2
@@ -49,6 +67,9 @@ golang.org/x/net/context/ctxhttp
 golang.org/x/oauth2
 golang.org/x/oauth2/clientcredentials
 golang.org/x/oauth2/internal
+# golang.org/x/sync v0.0.0-20201020160332-67f06af15bc9
+## explicit
+golang.org/x/sync/semaphore
 # golang.org/x/text v0.3.6
 ## explicit; go 1.11
 golang.org/x/text/cases
