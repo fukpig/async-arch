@@ -197,9 +197,9 @@ func main() {
 				deserializer.Deserialize(msg.Value, &task)
 				switch eventName := task.Header.EventDescriptor; eventName {
 				case "task.assigned":
-					_ = conn.QueryRow(context.Background(), "insert analytic_log(task_id, user_id, action, created_at, cost) values($1,$2,$3,$4,$5)", task.Publicid, task.Userid, "assigned", task.CreatedAt, task.Cost)
+					_ = conn.QueryRow(context.Background(), "insert analytic_log(task_id, user_id, action, created_at, cost, description) values($1,$2,$3,$4,$5,$6)", task.Publicid, task.Userid, "assigned", task.CreatedAt, task.Cost, task.Description)
 				case "task.finished":
-					_ = conn.QueryRow(context.Background(), "insert audit_log(task_id, user_id, action, created_at, cost) values($1,$2,$3,$4,$5)", task.Publicid, task.Userid, "finished", task.CreatedAt, task.Cost)
+					_ = conn.QueryRow(context.Background(), "insert audit_log(task_id, user_id, action, created_at, cost, description) values($1,$2,$3,$4,$5,$6)", task.Publicid, task.Userid, "finished", task.CreatedAt, task.Cost, task.Description)
 				}
 			} else {
 				// The client will automatically try to recover from all errors.

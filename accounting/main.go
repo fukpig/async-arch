@@ -305,7 +305,7 @@ func main() {
 	}()
 
 	schemaRegistryClient := srclient.CreateSchemaRegistryClient("http://localhost:8081")
-	c.SubscribeTopics([]string{"dc1.task.cdc.tasks", "dc1.task.cdc.tasks.assigned", "dc1.task.cdc.tasks.finished"}, nil)
+	c.SubscribeTopics([]string{"dc1.task.cdc.tasks.new", "dc1.task.cdc.tasks.assigned", "dc1.task.cdc.tasks.finished"}, nil)
 
 	deserializer := NewProtobufDeserializer(schemaRegistryClient, "dc1.task.cdc.tasks")
 
@@ -329,10 +329,11 @@ func main() {
 					serializer := NewProtobufSerializer(schemaRegistryClient, topic)
 					eventUuid := uuid.NewV4().String()
 					message := pc.Task{
-						PublicId:  task.PublicId,
-						UserId:    task.UserId,
-						Cost:      fee,
-						CreatedAt: time.Now().Unix(),
+						PublicId:    task.PublicId,
+						UserId:      task.UserId,
+						Cost:        fee,
+						Description: "task.assigned",
+						CreatedAt:   time.Now().Unix(),
 						Header: &pc.Header{
 							ApplicationId:   "accounting-service",
 							Timestamp:       time.Now().Unix(),
@@ -356,10 +357,11 @@ func main() {
 					serializer := NewProtobufSerializer(schemaRegistryClient, topic)
 					eventUuid := uuid.NewV4().String()
 					message := pc.Task{
-						PublicId:  task.PublicId,
-						UserId:    task.UserId,
-						Cost:      amount,
-						CreatedAt: time.Now().Unix(),
+						PublicId:    task.PublicId,
+						UserId:      task.UserId,
+						Cost:        amount,
+						Description: "task.finished",
+						CreatedAt:   time.Now().Unix(),
 						Header: &pc.Header{
 							ApplicationId:   "accounting-service",
 							Timestamp:       time.Now().Unix(),

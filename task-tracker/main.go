@@ -187,7 +187,7 @@ func main() {
 	}
 
 	//topic := "dc1.identity.cdc.users"
-	topic := "dc1.task.cdc.tasks"
+	topic := "dc1.task.cdc.tasks.new"
 	schemaRegistryClient := srclient.CreateSchemaRegistryClient("http://localhost:8081")
 	schema, err := schemaRegistryClient.GetLatestSchema(topic)
 	if schema == nil {
@@ -423,7 +423,7 @@ func main() {
 				log.Println("sql error", err)
 			}
 
-			topic := "dc1.task.cdc.tasks"
+			topic := "dc1.task.cdc.tasks.new"
 
 			serializer := NewProtobufSerializer(schemaRegistryClient, topic)
 			eventUuid := uuid.NewV4().String()
